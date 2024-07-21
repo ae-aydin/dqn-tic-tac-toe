@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from agent.agent import RandomAgent
 from algo.dqn import DQN, Transition
-from env.tic_tac_toe import Player
+from envs.tic_tac_toe import Player
 
 
 def agent_vs_random(algo_agent: DQN, random_agent: RandomAgent, soft_update: bool):

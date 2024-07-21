@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from env.env import Environment
+from envs.env import Environment
 
 
 class BaseAgent(ABC):

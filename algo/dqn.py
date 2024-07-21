@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from env.env import Environment
+from envs.env import Environment
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 

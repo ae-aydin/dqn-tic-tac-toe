@@ -1,6 +1,6 @@
 from agent.agent import RandomAgent
 from algo.dqn import DQN
-from env.tic_tac_toe import TicTacToe
+from envs.tic_tac_toe import TicTacToe
 from marl import agent_vs_random
 
 if __name__ == "__main__":
