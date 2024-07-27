@@ -41,7 +41,7 @@ def main():
     elif args.mode == "ql":
         env = TicTacToe()
         agents = [QLearning(env.action_space) for _ in range(env.num_players)]
-        train(agents, env, 200000)
+        train(agents, env, 100000)
 
 
 if __name__ == "__main__":
