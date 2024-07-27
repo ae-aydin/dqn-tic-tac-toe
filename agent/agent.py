@@ -15,9 +15,6 @@ class RandomAgent(BaseAgent):
     def select_action(self, env: Environment):
         return env._sample_action()
 
-    def __str__(self) -> str:
-        return "RandomAgent"
-
 
 class HumanAgent(BaseAgent):
     def select_action(self, env: Environment):
