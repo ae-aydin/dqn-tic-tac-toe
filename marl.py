@@ -1,149 +1,133 @@
-import random
+import logging
+import pickle
 
+import numpy as np
 from tqdm import tqdm
 
-from agent.agent import RandomAgent
+from agent.agent import HumanAgent, RandomAgent
+from algo.algo import Algorithm
 from algo.dqn import DQN, Transition
+from algo.q_learning import QLearning
 from envs.env import Environment
-from envs.tic_tac_toe import PLAYERS, Player, TicTacToe
-import logging
-import numpy as np
-
-def agent_vs_random(env: Environment, soft_update: bool):
-    dqn = DQN(env, [16, 32, 16])
-    random_agent = RandomAgent()
-    n_steps = 0
-    win, lose, draw = 0, 0, 0
-    for ep in range(dqn.n_episodes):
-        state = dqn.env.reset()
-        done = False
-        a2p, p2a = dqn.get_agent_map((dqn, random_agent), PLAYERS)
-        if dqn.env.current_player == a2p[dqn]:
-            action = dqn._act_e_greedy(state, ep)
-        elif dqn.env.current_player == a2p[random_agent]:
-            action = random_agent.select_action(dqn.env)
-        new_state, reward, term, trunc = dqn.env.step(action, dqn.env.current_player)
-        if reward != 0:
-            reward = 1 if reward == a2p[dqn].value else -1
-        transition = Transition(state, action, new_state, reward)
-        dqn.memory.push(transition)
-        done = term or trunc
-
-        if not done:
-            dqn._optimize()
-            state = new_state
-            if soft_update:
-                dqn._soft_update_target()
-            else:
-                if ((ep + 1) % dqn.target_update_freq) == 0:
-                    dqn.target_net.load_state_dict(dqn.q_net.state_dict())
-        else:
-            print("MATCH ENDED:", reward)
-            print("table:", dqn.env.board, sep="\n")
-            if reward == 1:
-                print("WIN")
-                win += 1
-            elif reward == -1:
-                print("LOSE")
-                lose += 1
-            else:
-                print("DRAW")
-                draw += 1
-            print(f"performance={win}/{draw}/{lose}, episodes={ep}")
-            print()
-    dqn.save("random.pt")
 
 
-def agent_vs_human(agent, fname):
+# TODO
+def agent_vs_human_play(env: Environment, agent: Algorithm, fname: str):
     agent.load(fname, True)
-    state = agent.env.reset()
+    agents = [agent, HumanAgent()]
+
     print("Welcome to Tic-Tac-Toe!")
-    print("You are 'O', the AI is 'X'.")
+    agent_id = fname.split(".")[-2]
+    if agent_id == "X":
+        print("You are 'O', the AI is 'X'.")
+        player_agent_dict = dict(zip(env.players, agents))
+    elif agent_id == "O":
+        print("You are 'X', the AI is 'O'.")
+        player_agent_dict = dict(zip(env.players, agents[::-1]))
+    else:
+        return
+
+    for p, a in player_agent_dict.items():
+        a.player = p
+
     print(
-        "Enter your move as a number from 0-8, where 0 is the top-left corner and 8 is the bottom-right corner."
+        "Enter your move as a number from 1-9, where 1 is the top-left corner and 9 is the bottom-right corner."
     )
 
+    obs = env.reset()
+    print(env._out())
     while True:
-        # Human's turn
-        while True:
-            try:
-                human_action = int(input("\nYour turn. Enter your move (0-8): "))
-                if human_action not in agent.env.valid_actions:
-                    raise ValueError
-                break
-            except ValueError:
-                print("Invalid move. Please try again.")
+        acting_agent = player_agent_dict[env.current_player]
+        if isinstance(player_agent_dict[env.current_player], HumanAgent):
+            while True:
+                action = acting_agent.select_action(env.action_space)
+                if action is None:
+                    break
+                valid_move = env._is_valid_action(divmod(action, env.board_shape[0]))
+                if valid_move:
+                    break
+                else:
+                    print("Invalid move, try again.")
+        else:
+            print("AI's turn.")
+            action = acting_agent.step(obs, eval=True)
+            print(f"AI's move is {action}.")
 
-        state, reward, done, _ = agent.env.step(human_action, agent.env.current_player)
-        print(agent.env._out())
+        obs = env.step(action, acting_agent.player)
+        print(env._out())
 
-        if done:
-            if reward == -1:
+        if obs.terminate:
+            if obs.reward[agents[1].player] == 1:
                 print("You win!")
-            elif reward == 0:
-                print("It's a draw!")
-            break
-
-        # AI's turn
-        print("\nAI's turn:")
-        action = agent._act_greedy(state)
-        state, reward, done, _ = agent.env.step(action, agent.env.current_player)
-        print(agent.env._out())
-
-        if done:
-            if reward == 1:
-                print("AI wins!")
-            elif reward == 0:
+            elif obs.reward[agents[1].player] == -1:
+                print("You lose!")
+            elif obs.reward == 0:
                 print("It's a draw!")
             break
 
     print("Game Over!")
 
 
+# https://ai.stackexchange.com/questions/10032/why-isnt-my-q-learning-agent-able-to-play-tic-tac-toe?rq=1
+# https://ai.stackexchange.com/questions/6573/how-can-both-agents-know-the-terminal-reward-in-self-play-reinforcement-learning
 
 
-def human_vs_random():
-    pass
+def duel_tabular_q_train(env: Environment, n_episodes: int):
+    """Training two individual Tabular-Q-Learning agent.
 
-def train(agents: list, env: Environment, n_episodes: int):
-    player_agent = dict(zip(env.players, agents))
-    for p, a in player_agent.items():
-        a.player = p
+    Args:
+        env (Environment): Environment setting.
+        n_episodes (int): Total training episodes.
+    """
+
+    agents = list()
+    player_agent_dict = dict()
+    approx_steps = (n_episodes * env.action_space) // 2
+    for idx in range(env.num_players):
+        agent = QLearning(env.action_space, approx_steps, env.players[idx])
+        agents.append(agent)
+        player_agent_dict[agent.player] = agent
     n_steps, win, lose, draw = 0, 0, 0, 0
-    pbar = tqdm(range(n_episodes), desc=f"steps={n_steps+1} | {win}/{draw}/{lose}| episodes", ncols=150)
+    pbar = tqdm(
+        range(n_episodes),
+        desc=f"steps={n_steps+1} | {win}/{draw}/{lose}| episodes",
+        ncols=150,
+    )
     for ep in pbar:
-        state = env.reset()
-        done = False
-        while not done:
+        obs = env.reset()
+        while not obs.terminate:
             n_steps += 1
-            acting_agent = player_agent[env.current_player]
-            action = acting_agent.act_e_greedy(state, ep, env)
-            new_state, reward, term, trunc = env.step(
-                    action, acting_agent.player
-                )
-            done = term or trunc
-            acting_agent.update(state, action, reward[acting_agent.player], new_state, done)
-            if not done:
-                state = new_state
-            else:
-                if reward[agents[0].player] == 1:
-                    logging.debug("WIN")
-                    win += 1
-                elif reward[agents[0].player] == -1:
-                    logging.debug("LOSE")
-                    lose += 1
-                else:
-                    logging.debug("DRAW")
-                    draw += 1
-                logging.debug(f"performance={win}/{draw}/{lose}, episodes={ep}")
-                pbar.set_description(f"steps={n_steps+1} | {win}/{draw}/{lose} | episodes")
-    #for p, a in player_agent.items():
-        #np.save(f"{str(a)}_{str(p)}.npy", a.q, allow_pickle=True)
-    print(player_agent[agents[0].player].q[tuple(np.zeros(env.action_space))])
-    print(len(player_agent[agents[0].player].q))
-    non_empty_elements = {state: q_values for state, q_values in player_agent[agents[0].player].q.items() if np.any(q_values != 0)}
-    print(len(non_empty_elements))
+            acting_agent = player_agent_dict[env.current_player]
+            action = acting_agent.step(obs)
+            obs = env.step(action, acting_agent.player)
 
-    # Print the total count of non-empty states
-    total_non_empty_states = len(non_empty_elements)
-    print(f"Total number of non-empty states: {total_non_empty_states}")
+        for agent in agents:
+            agent.step(obs)
+
+        if obs.reward[agents[0].player] == 1:
+            logging.debug("AGENT X WIN")
+            win += 1
+        elif obs.reward[agents[0].player] == -1:
+            logging.debug("AGENT O WIN")
+            lose += 1
+        else:
+            logging.debug("DRAW")
+            draw += 1
+        logging.debug(f"performance={win}/{draw}/{lose}, episodes={ep}")
+        pbar.set_description(f"steps={n_steps+1} | {win}/{draw}/{lose} | episodes")
+
+    for p, a in player_agent_dict.items():
+        with open(f"{str(a)}_{str(p)}.pkl", "wb") as file:
+            pickle.dump(a.q, file)
+        print(a.q[tuple(np.zeros(env.action_space))])
+        print(a.eps_schedule.steps_taken, a.epsilon)
+
+
+def duel_dqn_train(env: Environment, n_episodes: int):
+    """Training two individual DQN agent.
+
+    Args:
+        env (Environment): Environment setting.
+        n_episodes (int): Total training episodes.
+    """
+    pass

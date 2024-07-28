@@ -5,10 +5,12 @@ from collections import deque, namedtuple
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 from agent.agent import RandomAgent
-from envs.env import Environment
-from tqdm import tqdm
+from algo.algo import Algorithm
+from algo.epsilon import EpsilonLinearDecay
+from envs.env import Environment, Player
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
@@ -45,154 +47,52 @@ class MLP(nn.Module):
         return self.model(x)
 
 
-class DQN:
+class DQN(Algorithm):
     def __init__(
         self,
-        env: Environment,
+        state_space: int,
+        action_space: int,
         hidden_layers: list,
-        memory_size: int = 2**14,
-        n_episodes: int = 10**4,
-        batch_size: int = 2**6,
-        eps_max: float = 0.9,
-        eps_min: float = 0.1,
-        eps_decay: float = 0.0001,
+        approx_steps: int,
+        player: Player = Player(0),
+        memory_size: int = 10_000,
+        batch_size: int = 64,
+        eps_init: float = 0.9,
+        eps_final: float = 0.1,
         learning_rate: float = 0.0001,  # alpha
         gamma: float = 0.99,  # discount
-        target_update_freq: int = 2**9,
-        tau: float = 0.005,
+        target_update_freq: int = 1000,  # target network update per this episode
+        tau: float = 0.005,  # soft update rate
     ) -> None:
+        super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.env = env
         self.hidden_layers = hidden_layers
-        self.memory = Memory(memory_size)
-        self.q_net = MLP(env.state_space, env.action_space, hidden_layers)
-        self.target_net = MLP(env.state_space, env.action_space, hidden_layers)
+        self.q_net = MLP(state_space, action_space, hidden_layers)
+        self.target_net = MLP(state_space, action_space, hidden_layers)
         self.target_net.eval()
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
-        self.n_episodes = n_episodes
+        self.player = player
+        self.memory = Memory(memory_size)
         self.batch_size = batch_size
-        self.eps_max = eps_max
-        self.eps_min = eps_min
-        self.eps_decay = eps_decay
+        self.eps_schedule = EpsilonLinearDecay(eps_init, eps_final, approx_steps)
+        self.epsilon = self.eps_schedule.value
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.target_update_freq = target_update_freq
         self.tau = tau
-
-    def self_play(self, load: str, soft_update: bool = True):
-        if load is not None:
-            self.load(load, False)
-        n_steps = 0
-        win, lose, draw = 0, 0, 0
-        pbar = tqdm(range(self.n_episodes), desc=f"steps={n_steps+1} | {win}/{draw}/{lose}| episodes", ncols=150)
-        for ep in pbar:
-            logging.debug(f"episode={ep}")
-            state = self.env.reset()
-            done = False
-            a2p, p2a = self.get_agent_map(("dqn", "self"), self.env.players)
-            main_agent = "dqn"
-            logging.debug(a2p)
-            while not done:
-                n_steps += 1
-                current_player = self.env.current_player
-                if current_player != a2p[main_agent]:
-                    state = -1 * state
-                action = self._act_e_greedy(state, ep)
-                new_state, reward, term, trunc = self.env.step(
-                    action, current_player
-                )
-                if reward != 0:
-                    reward = 1 if reward == a2p[main_agent].value else -1
-                transition = Transition(-1 * state, action, new_state, reward)
-                logging.debug(transition)
-                self.memory.push(transition)
-                self._optimize()
-                done = term or trunc
-                if not done:
-                    state = new_state
-
-                    if soft_update:
-                        self._soft_update_target()
-                    else:
-                        if ((ep + 1) % self.target_update_freq) == 0:
-                            self.target_net.load_state_dict(self.q_net.state_dict())
-                else:
-                    # self.memory.push(Transition(state, None, None, reward))
-                    if reward == 1:
-                        logging.debug("WIN")
-                        win += 1
-                    elif reward == -1:
-                        logging.debug("LOSE")
-                        lose += 1
-                    else:
-                        logging.debug("DRAW")
-                        draw += 1
-                    logging.debug(f"performance={win}/{draw}/{lose}, episodes={ep}")
-                    pbar.set_description(f"steps={n_steps+1} | {win}/{draw}/{lose} | episodes")
-        self.save("dqn.pt")
-
-    def agent_vs_random(self, load: str, soft_update: bool = True):
-        if load is not None:
-            self.load(load, False)
-        random_agent = RandomAgent()
-        n_steps = 0
-        win, lose, draw = 0, 0, 0
-        pbar = tqdm(range(self.n_episodes), desc=f"steps={n_steps+1} | {win}/{draw}/{lose}| episodes", ncols=150)
-        for ep in pbar:
-            logging.debug(f"episode={ep}")
-            state = self.env.reset()
-            done = False
-            a2p, p2a = self.get_agent_map(("dqn", "random_agent"), self.env.players)
-            logging.debug(a2p)
-            while not done:
-                n_steps += 1
-                current_player = self.env.current_player
-                if current_player == a2p["dqn"]:
-                    action = self._act_e_greedy(state, ep)
-                elif current_player == a2p["random_agent"]:
-                    logging.debug("random_agent playing.")
-                    action = random_agent.select_action(self.env)
-                    logging.debug(f"action={action}")
-                new_state, reward, term, trunc = self.env.step(
-                    action, current_player
-                )
-                if reward != 0:
-                    reward = 1 if reward == a2p["dqn"].value else -1
-                transition = Transition(state, action, new_state, reward)
-                logging.debug(transition)
-                self.memory.push(transition)
-                done = term or trunc
-                if not done:
-                    self._optimize()
-                    state = new_state
-
-                    if soft_update:
-                        self._soft_update_target()
-                    else:
-                        if ((n_steps + 1) % self.target_update_freq) == 0:
-                            self.target_net.load_state_dict(self.q_net.state_dict())
-                else:
-                    if reward == 1:
-                        logging.debug("WIN")
-                        win += 1
-                    elif reward == -1:
-                        logging.debug("LOSE")
-                        lose += 1
-                    else:
-                        logging.debug("DRAW")
-                        draw += 1
-                    logging.debug(f"performance={win}/{draw}/{lose}, episodes={ep}")
-                    pbar.set_description(f"steps={n_steps+1} | {win}/{draw}/{lose} | episodes")
-        self.save("random.pt")
+        self._prev_state = None
+        self._prev_action = None
 
     def _optimize(self):
-        if len(self.memory) < self.memory.max_size // 2:
+        if len(self.memory) < self.memory.max_size:
             return
 
         experience_batch = self.memory.sample(self.batch_size)
         state_batch = torch.stack([torch.Tensor(obs.state) for obs in experience_batch])
-        reward_batch = torch.Tensor([obs.reward for obs in experience_batch])
+        reward_batch = torch.Tensor(
+            [obs.reward[self.player] for obs in experience_batch]
+        )
         action_batch = (
             torch.Tensor([obs.action for obs in experience_batch])
             .to(torch.int64)
@@ -215,38 +115,31 @@ class DQN:
         self.optimizer.step()
         return loss.item()
 
-    def _act_e_greedy(self, state: tuple, step: int):
-        epsilon = self._calc_epsilon(step)
-        logging.debug(f"epsilon={epsilon:.5f}")
-        if np.random.rand() < 1 - epsilon:
-            action = self._act_greedy(state)
+    def _act_e_greedy(self, state: tuple, valid_actions: list):
+        if np.random.rand() < 1 - self.epsilon:
+            logging.debug("Acting greedy.")
+            action = self._act_greedy(state, valid_actions)
         else:
             logging.debug("Acting random.")
-            action = self._act_random()
-            logging.debug(f"action={action}")
+            action = self._act_random(valid_actions)
+        logging.debug(f"action={action}")
+        self.epsilon = self.eps_schedule.step()
         return action
 
-    def _calc_epsilon(self, step: int):
-        return self.eps_min + (self.eps_max - self.eps_min) * np.exp(
-            -self.eps_decay * step
-        )
-
-    def _act_greedy(self, state: tuple):
-        logging.debug("Acting greedy.")
+    def _act_greedy(self, state: tuple, valid_actions: list):
         with torch.no_grad():
             q_values = self.q_net(torch.Tensor(state))
-            logging.debug(f"action_values={[f"({i}, {float(v):.5f})" for i, v in enumerate(q_values.numpy())]}")
-            logging.debug(f"valid_actions={self.env.valid_actions}")
+            # logging.debug(f"action_values={[f"({i}, {float(v):.5f})" for i, v in enumerate(q_values.numpy())]}")
+            logging.debug(f"valid_actions={valid_actions}")
             mask = torch.full(q_values.shape, float("-inf"))
-            mask[self.env.valid_actions] = q_values[self.env.valid_actions]
+            mask[self.env.valid_actions] = q_values[valid_actions]
             action = torch.argmax(mask).item()
-            logging.debug(f"action={action}")
             return action
 
-    def _act_random(self):
-        return self.env._sample_action()
+    def _act_random(self, valid_actions: list):
+        return random.choice(valid_actions)
 
-    def _soft_update_target_old(self):
+    def _soft_update_target(self):
         q_state_dict = self.q_net.state_dict()
         t_state_dict = self.target_net.state_dict()
         for key in q_state_dict:
@@ -254,13 +147,6 @@ class DQN:
                 1 - self.tau
             )
         self.target_net.load_state_dict(t_state_dict)
-
-    def _soft_update_target(self):
-        target_net_state_dict = self.target_net.state_dict()
-        q_net_state_dict = self.q_net.state_dict()
-        for key in q_net_state_dict:
-            target_net_state_dict[key] = q_net_state_dict[key] * self.tau + target_net_state_dict[key] * (1 - self.tau)
-        self.target_net.load_state_dict(target_net_state_dict)
 
     def save(self, fname):
         torch.save(self.q_net.state_dict(), fname)
@@ -272,16 +158,3 @@ class DQN:
         if eval:
             self.q_net.eval()
         self.target_net.eval()
-
-    def load_from_agent(self, agent):
-        self.q_net.load_state_dict(agent.policy_net.state_dict())
-        self.target_net.load_state_dict(agent.target_net.state_dict())
-
-    def get_agent_map(self, agents: tuple, players: tuple):
-        agent_to_player = {agents[0]: random.choice(players), agents[1]: None}
-        agent_to_player[agents[1]] = (
-            players[1] if agent_to_player[agents[0]] == players[0] else players[0]
-        )
-        player_to_agent = {player: agent for agent, player in agent_to_player.items()}
-        return agent_to_player, player_to_agent
-

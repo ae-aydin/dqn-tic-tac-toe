@@ -1,11 +1,10 @@
 import argparse
 import logging
 
-from agent.agent import RandomAgent
 from algo.dqn import DQN
 from algo.q_learning import QLearning
-from envs.tic_tac_toe import PLAYERS, TicTacToe
-from marl import agent_vs_human, agent_vs_random, train
+from envs.tic_tac_toe import TicTacToe
+from marl import agent_vs_human_play, duel_tabular_q_train
 
 
 def main():
@@ -30,18 +29,17 @@ def main():
         handlers=[logging.FileHandler("debug.log", mode="w")],
     )
 
-    agent = DQN(TicTacToe(), [18, 36, 18])
-
     if args.mode == "self":
-        agent.self_play(args.load)
+        pass
     elif args.mode == "random":
-        agent.agent_vs_random(args.load)
+        pass
     elif args.mode == "play":
-        agent_vs_human(agent, args.load)
+        env = TicTacToe()
+        agent_vs_human_play(env, QLearning(env.action_space), args.load)
     elif args.mode == "ql":
         env = TicTacToe()
         agents = [QLearning(env.action_space) for _ in range(env.num_players)]
-        train(agents, env, 100000)
+        duel_tabular_q_train(agents, env, 100000)
 
 
 if __name__ == "__main__":
