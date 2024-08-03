@@ -1,4 +1,3 @@
-import logging
 import random
 
 import numpy as np
@@ -38,19 +37,17 @@ class TicTacToe(Environment):
         self.board = np.zeros(self.board.shape, dtype=np.int8)
         self.current_player = self.starting_player
         self.valid_actions = self._update_valid_actions()
+        self.winner = None
         return self.last()
 
     def step(self, action: int, player: Player):
         if (self._check_done() == -2) and action != -1:
             assert player == self.current_player
-            logging.debug(f"player={player}")
             self._act(action, player)
-            logging.debug(f"board=\n{self.board}")
             next_player = Player.X if self.current_player == Player.O else Player.O
             self.current_player = next_player
             return self.last()
         else:
-            logging.debug(f"Game ended. Status={self._check_done()}")
             return
 
     def _check_done(self):
@@ -80,7 +77,7 @@ class TicTacToe(Environment):
             return random.choice(self.valid_actions)
         return -1
 
-    def _out(self):
+    def render(self):
         rendered_board = list()
         for r in range(self.board.shape[0]):
             row = self.board[r]
@@ -97,11 +94,16 @@ class TicTacToe(Environment):
         state = tuple(self.board.flatten())
         self.valid_actions = self._update_valid_actions()
         done = self._check_done()
-        if done == 0 or done == -2:
+        if done == -2:
             reward = {Player.X: 0, Player.O: 0}
+        elif done == 0:
+            reward = {Player.X: 0, Player.O: 0}
+            self.winner = Player(0)
         elif done == 1:
             reward = {Player.X: 1, Player.O: -1}
+            self.winner = Player(1)
         elif done == -1:
             reward = {Player.X: -1, Player.O: 1}
+            self.winner = Player(-1)
         terminate = True if done != -2 else False
         return Observation(state, self.valid_actions, reward, terminate)

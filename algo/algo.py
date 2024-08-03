@@ -1,11 +1,6 @@
-from abc import ABC, abstractmethod
+from agent.agent import BaseAgent
 
 
-class Algorithm(ABC):
-    @abstractmethod
+class Algorithm(BaseAgent):
     def __init__(self):
-        pass
-
-    @abstractmethod
-    def __str__(self) -> str:
-        pass
+        super().__init__()

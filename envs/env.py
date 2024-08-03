@@ -30,9 +30,10 @@ class Environment(ABC):
         self.board = np.zeros(board_shape, dtype=np.int8)
         self.starting_player = starting_player
         self.current_player = self.starting_player
+        self.winner = None
         self.valid_actions = self._update_valid_actions()
-        self.state_space = np.prod(board_shape)
-        self.action_space = len(self.valid_actions)
+        self.state_size = np.prod(board_shape)
+        self.num_actions = len(self.valid_actions)
 
     @abstractmethod
     def reset(self):
@@ -63,10 +64,10 @@ class Environment(ABC):
         pass
 
     def _sample_random_action(self):
-        return random.choice(range(self.state_space))
+        return random.choice(range(self.state_size))
 
     @abstractmethod
-    def _out(self):
+    def render(self):
         pass
 
     @abstractmethod
