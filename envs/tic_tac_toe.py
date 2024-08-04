@@ -20,7 +20,7 @@ WIN_CONDITIONS = (
     (2, 4, 6),
 )
 
-
+# Environment for Tic-Tac-Toe game.
 class TicTacToe(Environment):
     def __init__(
         self,

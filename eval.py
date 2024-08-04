@@ -1,19 +1,31 @@
 import argparse
-import agent.agent as agent
-from algo.algo import Algorithm
-import algo.dqn as dqn
-import algo.q_learning as ql
-from envs.env import Player, Environment
-from envs.tic_tac_toe import TicTacToe
-from tqdm import tqdm
+
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
+
+import agent.agent as agent
+import algo.dqn as dqn
+import algo.q_learning as ql
+from algo.algo import Algorithm
+from envs.env import Environment, Player
+from envs.tic_tac_toe import TicTacToe
 
 STR_AGENT_ENC = {dqn.DQN_STR: dqn.DQN, ql.QL_STR: ql.QLearning}
 ARG_PLAYER_ENC = {"player_a": Player(1), "player_b": Player(-1)}
 
 
 def extract_player(agent_str: str, arg_str: str, env: Environment):
+    """Infer desired agent from command line argument.
+
+    Args:
+        agent_str (str): Value of the argument.
+        arg_str (str): Name of the argument.
+        env (Environment): Environment.
+
+    Returns:
+        Agent or Algorithm: Extracted Agent.
+    """
     player = ARG_PLAYER_ENC[arg_str]
     if agent_str == "random":
         return agent.RandomAgent(player)
@@ -35,6 +47,15 @@ def extract_player(agent_str: str, arg_str: str, env: Environment):
 
 
 def arrange_players(args: argparse.Namespace, env: Environment):
+    """Arrange players according to command line arguments.
+
+    Args:
+        args (argparse.Namespace): Command line arguments.
+        env (Environment): Environment
+
+    Returns:
+        Agents or Algorithms: Extracted Agents.
+    """
     player_a = extract_player(args.player_a, "player_a", env)
     player_b = extract_player(args.player_b, "player_b", env)
     return player_a, player_b
@@ -43,6 +64,18 @@ def arrange_players(args: argparse.Namespace, env: Environment):
 def eval(
     player_a, player_b, env: Environment, n_episodes: int = 1000, eps: float = 0.0
 ):
+    """Evaluate given agents against each other. (Agent-Agent, Agent-Random, Agent-Human).
+
+    Args:
+        player_a (_type_): Agent to play player_a.
+        player_b (_type_): Agent to play player_b.
+        env (Environment): Environment
+        n_episodes (int, optional): Total test episodes. Defaults to 1000.
+        eps (float, optional): Exploration rate for algorithm agents. Defaults to 0.0.
+
+    Returns:
+        dict: Win/Draw/Lose rates.
+    """
     agents = [player_a, player_b]
     results = {"win": 0, "draw": 0, "lose": 0, "eps": eps, "n_episodes": n_episodes}
     player_agent_dict = dict()
@@ -87,20 +120,41 @@ def eval(
                 print("Draw")
 
     if not human:
-        print(f"{agents[0]}_{agents[0].player}={results["win"]}")
-        print(f"{agents[1]}_{agents[1].player}={results["lose"]}")
-        print(f"Draw={results["draw"]}")
+        print(f"{agents[0]}_{agents[0].player}={results['win']}")
+        print(f"{agents[1]}_{agents[1].player}={results['lose']}")
+        print(f"Draw={results['draw']}")
         return results
 
 
 def measure_performance(player_a, player_b, env: Environment, n_episodes: int = 1000):
-    epsilons = np.arange(0, 0.105, 0.005)
-    results = dict()
-    results["player_a"] = f"{str(player_a)}_{player_a.player}"
-    results["player_b"] = f"{str(player_b)}_{player_b.player}"
-    for eps in epsilons:
-        results[eps] = eval(player_a, player_b, env, n_episodes, eps)
-    print(results)
+    """Plot win-draw-lose rate of given agents.
+
+    Args:
+        player_a: Agent to play player_a.
+        player_b: Agent to play player_b.
+        env (Environment): Environment
+        n_episodes (int, optional): Total test episodes. Defaults to 1000.
+    """
+    epsilons = np.arange(0, 0.055, 0.005)
+    eps, wins, draws, losses = list(), list(), list(), list()
+    player_a_str = f"{str(player_a)}_{player_a.player}"
+    player_b_str = f"{str(player_b)}_{player_b.player}"
+    for epsilon in epsilons:
+        result = eval(player_a, player_b, env, n_episodes, epsilon)
+        eps.append(result["eps"])
+        wins.append(result["win"])
+        draws.append(result["draw"])
+        losses.append(result["lose"])
+    plt.figure(figsize=(12, 6))
+    plt.plot(epsilons, wins, label=f"{player_a_str} Wins", marker="o")
+    plt.plot(epsilons, draws, label="Draws", marker="o")
+    plt.plot(epsilons, losses, label=f"{player_b_str} Wins", marker="o")
+    plt.xlabel("Epsilon")
+    plt.ylabel("Count over 1000 games")
+    plt.title(f"{player_a_str} versus {player_b_str}")
+    plt.legend()
+    plt.grid()
+    plt.savefig(f"{player_a_str} versus {player_b_str}.png", bbox_inches="tight")
 
 
 def main():

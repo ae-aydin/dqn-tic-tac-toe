@@ -79,12 +79,12 @@ class QLearning(Algorithm):
         self, state: tuple, valid_actions: list, eval: bool, eps: float = 0.0
     ):
         epsilon = eps if eval else self.epsilon
-        print(str(self), epsilon)
         if np.random.rand() < 1 - epsilon:
             action = self._act_greedy(state, valid_actions)
         else:
             action = self._act_random(valid_actions)
-        self.epsilon = self.eps_schedule.step()
+        if not eval:
+            self.epsilon = self.eps_schedule.step()
         return action
 
     def _act_greedy(self, state: tuple, valid_actions: list):

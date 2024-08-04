@@ -21,7 +21,7 @@ DQN_STR = "DQN"
 def init_prev():
     return None
 
-
+# Experience replay for Deep Q-Network.
 class Memory:
     def __init__(self, max_size: int) -> None:
         self.max_size = max_size
@@ -36,7 +36,7 @@ class Memory:
     def __len__(self):
         return len(self.memory)
 
-
+# Multi-layer Perceptron for Deep Q-Network's Q-Values.
 class MLP(nn.Module):
     def __init__(self, input_size: int, output_size: int, hidden_layers: list):
         super(MLP, self).__init__()
@@ -56,21 +56,21 @@ class MLP(nn.Module):
 class DQN(Algorithm):
     def __init__(
         self,
-        state_size: int,
-        num_actions: int,
-        hidden_layers: list,
+        state_size: int, # size of information state
+        num_actions: int, # number of actions
+        hidden_layers: list, # hidden layer sizes for mlp
         approx_steps: int,  # for eps decay
-        player: Player = Player(0),
-        memory_size: int = 20_000,
-        batch_size: int = 256,
-        eps_init: float = 1.0,
-        eps_final: float = 0.1,
-        learning_rate: float = 0.02,  # alpha
+        player: Player = Player(0), # agent plays as 
+        memory_size: int = 10_000, # experience replay memory size
+        batch_size: int = 128, # batch size for experience replay
+        eps_init: float = 1.0, # starting epsilon
+        eps_final: float = 0.1, # final epsilon
+        learning_rate: float = 0.001,  # alpha
         gamma: float = 0.99,  # discount
-        target_update_every: int = 1000,  # target network update per this step
-        optimize_every: int = 16,
-        soft: bool = False,
-        tau: float = 0.005,  # soft update rate
+        target_update_every: int = 5000,  # target network update frequency (step)
+        optimize_every: int = 16, # q-value network optimization frequency (step)
+        soft: bool = False, # target network soft update
+        tau: float = 0.005,  # target network soft update ratio
     ) -> None:
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -102,7 +102,6 @@ class DQN(Algorithm):
         self,
         obs: Observation,
         eval: bool = False,
-        self_play: bool = False,
         eps: float = 0.0,
     ):
 
@@ -114,7 +113,7 @@ class DQN(Algorithm):
         if not eval:
 
             if self.eps_schedule.steps_taken % self.optimize_every == 0:
-                self._optimize(self_play)
+                self._optimize()
 
             if self.eps_schedule.steps_taken % self.target_update_every == 0:
                 self._update_target(self.soft)
@@ -140,8 +139,8 @@ class DQN(Algorithm):
 
         return action
 
-    def _optimize(self, self_play: bool):
-        if len(self.memory) < self.memory.max_size:
+    def _optimize(self):
+        if len(self.memory) < self.memory.max_size // 3:
             return
 
         transition_batch = self.memory.sample(self.batch_size)
@@ -191,8 +190,7 @@ class DQN(Algorithm):
             invalid_actions_batch.bool(), -np.finfo(np.float32).max
         )
         max_next_q = torch.max(valid_target_q_values, dim=1)[0]
-        if self_play:
-            reward_batch[reward_batch == -1] = 1  # self play, removable
+
         target = (
             reward_batch
             + done_batch.logical_not() * self.gamma * max_next_q.unsqueeze(1)
@@ -202,7 +200,6 @@ class DQN(Algorithm):
         loss = self.criterion(pred, target)
         self.optimizer.zero_grad()
         loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), max_norm=1.0) # needed?
         self.optimizer.step()
 
     def _act_e_greedy(
@@ -213,7 +210,8 @@ class DQN(Algorithm):
             action = self._act_greedy(state, valid_actions)
         else:
             action = self._act_random(valid_actions)
-        self.epsilon = self.eps_schedule.step()
+        if not eval:
+            self.epsilon = self.eps_schedule.step()
         return action
 
     def _act_greedy(self, state: tuple, valid_actions: list):
