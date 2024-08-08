@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +11,8 @@ import algo.q_learning as ql
 from algo.algo import Algorithm
 from envs.env import Environment, Player
 from envs.tic_tac_toe import TicTacToe
+
+# Model evaluation.
 
 STR_AGENT_ENC = {dqn.DQN_STR: dqn.DQN, ql.QL_STR: ql.QLearning}
 ARG_PLAYER_ENC = {"player_a": Player(1), "player_b": Player(-1)}
@@ -32,7 +35,8 @@ def extract_player(agent_str: str, arg_str: str, env: Environment):
     elif agent_str == "human":
         return agent.HumanAgent(player)
     else:
-        agent_algo = agent_str.split("_")[0]
+        agent_str = Path(agent_str)
+        agent_algo = agent_str.name.split("_")[0]
         algo = STR_AGENT_ENC[agent_algo]
         if algo == dqn.DQN:
             algo = algo(env.state_size, env.num_actions, [18, 36, 18], 100_000, player)
@@ -77,12 +81,13 @@ def eval(
         dict: Win/Draw/Lose rates.
     """
     agents = [player_a, player_b]
+    human = next((a for a in agents if isinstance(a, agent.HumanAgent)), None)
+    random = next((a for a in agents if isinstance(a, agent.RandomAgent)), None)
+    algo = next((a for a in agents if isinstance(a, Algorithm)), None)
     results = {"win": 0, "draw": 0, "lose": 0, "eps": eps, "n_episodes": n_episodes}
     player_agent_dict = dict()
     for a in agents:
         player_agent_dict[a.player] = a
-
-    human = any(isinstance(a, agent.HumanAgent) for a in agents)
 
     if human:
         print("Enter your move as a number from 1-9.")
@@ -123,6 +128,10 @@ def eval(
         print(f"{agents[0]}_{agents[0].player}={results['win']}")
         print(f"{agents[1]}_{agents[1].player}={results['lose']}")
         print(f"Draw={results['draw']}")
+        if random:
+            sum_reward = results["win"] - results["lose"]
+            sum_reward = -sum_reward if algo.player == Player(-1) else sum_reward
+            print(f"AverageReward={sum_reward / n_episodes}")
         return results
 
 
@@ -166,14 +175,17 @@ def main():
         "player_b", type=str, help="The second player (agent2, random, human, etc.)"
     )
     parser.add_argument(
-        "--env", type=Environment, default=TicTacToe, help="Environment setting."
+        "--plot",
+        action="store_true",
+        help="Plot performance across different epsilon values.",
     )
     args = parser.parse_args()
-    env = args.env()
+    env = TicTacToe()
     player_a, player_b = arrange_players(args, env)
     print(player_a, player_b)
-    # eval(player_a, player_b, env)
-    measure_performance(player_a, player_b, env, 1000)
+    eval(player_a, player_b, env)
+    if args.plot:
+        measure_performance(player_a, player_b, env, 1000)
 
 
 if __name__ == "__main__":

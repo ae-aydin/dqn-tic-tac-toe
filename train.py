@@ -1,7 +1,5 @@
-import logging
-import pickle
+import argparse
 
-import numpy as np
 from tqdm import tqdm
 
 from agent.agent import RandomAgent
@@ -73,18 +71,51 @@ def train(agents: list, env: Environment, n_episodes: int):
             a.save(str(p))
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="Train or evaluate RL agents.")
+    parser.add_argument(
+        "agent", choices=["dqn", "qlearning"], help="Select the RL agent to use."
+    )
+    parser.add_argument(
+        "--n-episodes", type=int, default=50000, help="Number of training episodes."
+    )
+    parser.add_argument(
+        "--n-decay-steps", type=int, default=50000, help="Total epsilon decay steps."
+    )
+    parser.add_argument(
+        "--self-play", action="store_true", help="Enable self-play mode for training."
+    )
+    args = parser.parse_args()
+
     env = TicTacToe()
-    episodes = 50_000
     agents = list()
-    agent_1 = DQN(env.state_size, env.num_actions, [18, 36, 18], episodes)
-    agent_2 = DQN(env.state_size, env.num_actions, [18, 36, 18], episodes)
-    # agent_1 = QLearning(episodes)
-    # agent_2 = QLearning(episodes)
-    agents.append(agent_1)
-    agents.append(agent_2)
-    train(agents, env, episodes)
-    # agent_1.player = Player(1)
-    eval(agent_1, RandomAgent(Player(-1)), env)
-    # agent_1.player = Player(-1)
-    eval(RandomAgent(Player(1)), agent_2, env)
+    hidden_layers = [18, 36, 18]
+
+    if args.agent == "dqn":
+        agents.append(
+            DQN(env.state_size, env.num_actions, hidden_layers, args.n_decay_steps)
+        )
+        if not args.self_play:
+            agents.append(
+                DQN(env.state_size, env.num_actions, hidden_layers, args.n_decay_steps)
+            )
+    elif args.agent == "qlearning":
+        agents.append(QLearning(args.n_decay_steps))
+        if not args.self_play:
+            agents.append(QLearning(args.n_decay_steps))
+    else:
+        return
+
+    train(agents, env, args.n_episodes)
+    if args.self_play:
+        agents[0].player = Player(1)
+        eval(agents[0], RandomAgent(Player(-1)), env)
+        agents[0].player = Player(-1)
+        eval(RandomAgent(Player(1)), agents[0], env)
+    else:
+        eval(agents[0], RandomAgent(Player(-1)), env)
+        eval(RandomAgent(Player(1)), agents[1], env)
+
+
+if __name__ == "__main__":
+    main()

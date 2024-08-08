@@ -162,9 +162,9 @@ cython_debug/
 #.idea/
 
 # Saved weights
-*.pt
+#*.pt
 *.npy
-*.pkl
+#*.pkl
 *.zip
 
 # Plots

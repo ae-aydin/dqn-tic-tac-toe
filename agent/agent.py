@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
+
 from envs.env import Environment, Player
+
 
 # Base Agent class.
 class BaseAgent(ABC):
@@ -14,6 +16,7 @@ class BaseAgent(ABC):
     def __str__(self):
         return "BaseAgent"
 
+
 # Agent that plays randomly.
 class RandomAgent(BaseAgent):
     def __init__(self, player: Player = Player(0)):
@@ -24,6 +27,7 @@ class RandomAgent(BaseAgent):
 
     def __str__(self):
         return "RandomAgent"
+
 
 # Agent allowing human input through terminal.
 class HumanAgent(BaseAgent):

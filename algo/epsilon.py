@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 # Base Class for epsilon (exploration / exploitation) value operations.
 class BaseEpsilon(ABC):
     def __init__(self, epsilon: float):
@@ -14,6 +15,7 @@ class BaseEpsilon(ABC):
     def value(self):
         return self.epsilon
 
+
 # Class for keeping epsilon constant.
 class ConstantEpsilon(BaseEpsilon):
     def __init__(self, epsilon: float):
@@ -25,6 +27,7 @@ class ConstantEpsilon(BaseEpsilon):
     @property
     def value(self):
         return self.epsilon
+
 
 # Class for decaying epsilon linearly, tracking steps taken.
 class EpsilonLinearDecay(BaseEpsilon):
@@ -47,6 +50,7 @@ class EpsilonLinearDecay(BaseEpsilon):
     @property
     def value(self):
         return self.epsilon
+
 
 # TODO
 # Class for decaying epsilon exponentially.
